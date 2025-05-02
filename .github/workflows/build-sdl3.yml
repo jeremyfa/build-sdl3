@@ -67,7 +67,7 @@ jobs:
         id: check-release
         run: |
           RELEASE_EXISTS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases/tags/sdl3-${{ steps.get-commit.outputs.sdl3_commit }}" | \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/sdl3-${{ steps.get-commit.outputs.sdl3_commit_short }}" | \
             jq -r '.id')
 
           if [[ "$RELEASE_EXISTS" == "null" || "$RELEASE_EXISTS" == "" ]]; then
@@ -311,6 +311,80 @@ jobs:
           path: build/windows/sdl3-windows-${{ matrix.arch }}.zip
           retention-days: 7
 
+  build-linux:
+    name: Build SDL3 for Linux
+    needs: [get-sdl3-commit]
+    # Only run if release doesn't exist
+    if: needs.get-sdl3-commit.outputs.release_exists == 'false'
+    strategy:
+      matrix:
+        include:
+          - os: "ubuntu-22.04"
+            arch: "x64"
+          - os: "ubuntu-22.04-arm"
+            arch: "arm64"
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake ninja-build pkg-config \
+            libasound2-dev libpulse-dev libdbus-1-dev libudev-dev libibus-1.0-dev \
+            libsystemd-dev libwayland-dev libxkbcommon-dev wayland-protocols \
+            libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev \
+            libxrandr-dev libxss-dev libxt-dev libxv-dev libxxf86vm-dev \
+            libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev
+
+      - name: Make Scripts Executable
+        run: |
+          chmod +x setup-sdl3-linux.sh
+          chmod +x build-sdl3-linux.sh
+
+      - name: Build SDL3 for Linux ${{ matrix.arch }} with specific commit
+        env:
+          SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
+          CI: true
+        run: |
+          echo "Building SDL3 for Linux ${{ matrix.arch }} with commit: $SDL3_COMMIT"
+          ./build-sdl3-linux.sh ${{ matrix.arch }}
+
+      - name: Check Build Output
+        run: |
+          echo "=== Library Directory ==="
+          ls -la build/linux/${{ matrix.arch }}/lib/
+          echo "=== Include Directory ==="
+          ls -la build/linux/${{ matrix.arch }}/include/
+          ls -la build/linux/${{ matrix.arch }}/include/SDL3/
+          echo "=== Binary Directory ==="
+          if [ -d "build/linux/${{ matrix.arch }}/bin" ]; then
+            ls -la build/linux/${{ matrix.arch }}/bin/
+          else
+            echo "No binaries found"
+          fi
+
+      - name: Create Linux Archive
+        run: |
+          # Create commit.txt file with the SDL3 commit hash
+          echo "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" > build/linux/${{ matrix.arch }}/commit.txt
+
+          # Debug: Check files in lib directory
+          echo "=== Files in lib directory ==="
+          ls -la build/linux/${{ matrix.arch }}/lib/
+
+          # Verify tar.gz contents
+          echo "=== Verifying tar.gz contents ==="
+          tar -tvf build/sdl3-linux-${{ matrix.arch }}.tar.gz | grep -E 'lib/libSDL3'
+
+      - name: Upload Linux Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-linux-${{ matrix.arch }}
+          path: build/sdl3-linux-${{ matrix.arch }}.tar.gz
+          retention-days: 7
+
   build-android:
     name: Build SDL3 for Android
     needs: [get-sdl3-commit]
@@ -391,7 +465,7 @@ jobs:
 
   publish-release:
     name: Publish GitHub Release
-    needs: [get-sdl3-commit, build-mac, build-ios, build-windows, build-android]
+    needs: [get-sdl3-commit, build-mac, build-ios, build-windows, build-linux, build-android]
     runs-on: ubuntu-latest
     # Run on schedule, manual triggers, or push to main (but not PRs)
     # And only if the release doesn't already exist
@@ -416,6 +490,9 @@ jobs:
           find artifacts/sdl3-ios-universal -name "*.zip" -exec cp {} release-assets/sdl3-ios-universal.zip \;
           find artifacts/sdl3-windows-x64 -name "*.zip" -exec cp {} release-assets/sdl3-windows-x64.zip \;
           find artifacts/sdl3-windows-arm64 -name "*.zip" -exec cp {} release-assets/sdl3-windows-arm64.zip \;
+          # Copy Linux artifacts (.tar.gz files)
+          find artifacts/sdl3-linux-x64 -name "*.tar.gz" -exec cp {} release-assets/sdl3-linux-x64.tar.gz \;
+          find artifacts/sdl3-linux-arm64 -name "*.tar.gz" -exec cp {} release-assets/sdl3-linux-arm64.tar.gz \;
           # Copy Android artifacts for all NDK versions
           for NDK_DIR in artifacts/sdl3-android-*/; do
             NDK_VERSION=$(basename "$NDK_DIR" | sed 's/sdl3-android-//')
@@ -441,10 +518,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get the files to upload
-          RELEASE_FILES=$(find release-assets -name "*.zip" | tr '\n' ' ')
+          RELEASE_FILES=$(find release-assets -name "*.zip" -o -name "*.tar.gz" | tr '\n' ' ')
 
           # Create release with GitHub CLI
-          gh release create "sdl3-${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" \
+          gh release create "sdl3-${{ needs.get-sdl3-commit.outputs.sdl3_commit_short }}" \
             --title "SDL3 ${{ steps.date.outputs.date }} (${{ needs.get-sdl3-commit.outputs.sdl3_commit_short }})" \
             --notes "Automated build of SDL3 from commit [${{ needs.get-sdl3-commit.outputs.sdl3_commit }}](https://github.com/libsdl-org/SDL/commit/${{ needs.get-sdl3-commit.outputs.sdl3_commit }})
 
@@ -454,5 +531,6 @@ jobs:
             - macOS (Universal)
             - iOS (ARM64 device + ARM64/x86_64 simulator)
             - Windows (x64 and ARM64)
+            - Linux (x64 and ARM64)
             - Android (multiple NDK versions, all architectures as static library)" \
             $RELEASE_FILES
