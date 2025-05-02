@@ -205,12 +205,23 @@ jobs:
       - name: Install Visual Studio Components
         uses: microsoft/setup-msbuild@v1
 
-      - name: Build SDL3 for Windows (x64 and ARM64) with specific commit
+      - name: Build SDL3 for Windows (x64) with specific commit
         shell: cmd
         env:
           SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
+          BUILD_ARCH: x64
         run: |
-          echo Building SDL3 for Windows with commit: %SDL3_COMMIT%
+          echo Building SDL3 for Windows x64 with commit: %SDL3_COMMIT%
+          call build-sdl3-windows.bat
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+      - name: Build SDL3 for Windows (ARM64) with specific commit
+        shell: cmd
+        env:
+          SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
+          BUILD_ARCH: arm64
+        run: |
+          echo Building SDL3 for Windows ARM64 with commit: %SDL3_COMMIT%
           call build-sdl3-windows.bat
           if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
 
@@ -258,7 +269,16 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        ndk-version: ['r21e', 'r22b', 'r23c', 'r24', 'r25c', 'r26d', 'r27c', 'r28b']
+        # Updated NDK version formats to match what sdkmanager expects
+        ndk-version:
+          - '21.4.7075529' # r21e
+          - '22.1.7171670' # r22b
+          - '23.1.7779620' # r23b
+          - '24.0.8215888' # r24
+          - '25.2.9519653' # r25c
+          - '26.3.11579264' # r26d
+          - '27.2.12479018' # r27c
+          - '28.1.13356709' # r28b
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3

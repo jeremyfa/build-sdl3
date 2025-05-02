@@ -15,93 +15,83 @@ if not exist SDL (
     )
 )
 
-:: Create output directories
-if not exist build\windows\x64\bin mkdir build\windows\x64\bin
-if not exist build\windows\x64\lib mkdir build\windows\x64\lib
-if not exist build\windows\x64\include mkdir build\windows\x64\include
-if not exist build\windows\arm64\bin mkdir build\windows\arm64\bin
-if not exist build\windows\arm64\lib mkdir build\windows\arm64\lib
-if not exist build\windows\arm64\include mkdir build\windows\arm64\include
+:: Determine which architecture to build
+if "%BUILD_ARCH%"=="" (
+    echo BUILD_ARCH environment variable not set. Building for x64 by default.
+    set BUILD_ARCH=x64
+)
 
-:: Build for Windows x64
-echo Building SDL3 for Windows x64...
+echo Building for architecture: %BUILD_ARCH%
+
+:: Create output directories for the specified architecture
+if not exist build\windows\%BUILD_ARCH%\bin mkdir build\windows\%BUILD_ARCH%\bin
+if not exist build\windows\%BUILD_ARCH%\lib mkdir build\windows\%BUILD_ARCH%\lib
+if not exist build\windows\%BUILD_ARCH%\include mkdir build\windows\%BUILD_ARCH%\include
+
+:: Build for Windows with the specified architecture
+echo Building SDL3 for Windows %BUILD_ARCH%...
 cd %SCRIPT_DIR%
-if not exist SDL\build_x64 mkdir SDL\build_x64
-cd SDL\build_x64
+if not exist SDL\build_%BUILD_ARCH% mkdir SDL\build_%BUILD_ARCH%
+cd SDL\build_%BUILD_ARCH%
 
-cmake .. -G Ninja ^
-    -DCMAKE_BUILD_TYPE=Release ^
-    -DSDL_SHARED=ON ^
-    -DSDL_STATIC=ON ^
-    -DCMAKE_INSTALL_PREFIX=%SCRIPT_DIR%\build\windows\x64\install
+if "%BUILD_ARCH%"=="arm64" (
+    :: For ARM64, we need to use a different generator and specify the architecture
+    cmake .. -G "Visual Studio 17 2022" -A ARM64 ^
+        -DCMAKE_BUILD_TYPE=Release ^
+        -DSDL_SHARED=ON ^
+        -DSDL_STATIC=ON ^
+        -DCMAKE_INSTALL_PREFIX=%SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install
+) else (
+    :: For x64, we can use Ninja as before
+    cmake .. -G Ninja ^
+        -DCMAKE_BUILD_TYPE=Release ^
+        -DSDL_SHARED=ON ^
+        -DSDL_STATIC=ON ^
+        -DCMAKE_INSTALL_PREFIX=%SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install
+)
 
 if %ERRORLEVEL% NEQ 0 (
-    echo Failed to generate x64 build files. Exiting.
+    echo Failed to generate %BUILD_ARCH% build files. Exiting.
     exit /b 1
 )
 
-ninja
+if "%BUILD_ARCH%"=="arm64" (
+    :: For ARM64, use cmake --build instead of ninja
+    cmake --build . --config Release
+) else (
+    :: For x64, use ninja as before
+    ninja
+)
+
 if %ERRORLEVEL% NEQ 0 (
-    echo Failed to build x64 version. Exiting.
+    echo Failed to build %BUILD_ARCH% version. Exiting.
     exit /b 1
 )
 
-ninja install
+if "%BUILD_ARCH%"=="arm64" (
+    :: For ARM64, use cmake --install instead of ninja install
+    cmake --install . --config Release
+) else (
+    :: For x64, use ninja install as before
+    ninja install
+)
+
 if %ERRORLEVEL% NEQ 0 (
-    echo Failed to install x64 version. Exiting.
+    echo Failed to install %BUILD_ARCH% version. Exiting.
     exit /b 1
 )
 
 :: Copy the DLLs, libs, and headers to build directory
-echo Copying x64 files to build directory...
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\x64\install\bin\*.dll %SCRIPT_DIR%\build\windows\x64\bin\
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\x64\install\lib\*.lib %SCRIPT_DIR%\build\windows\x64\lib\
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\x64\install\include\* %SCRIPT_DIR%\build\windows\x64\include\
-
-:: Build for Windows ARM64
-echo Building SDL3 for Windows ARM64...
-cd %SCRIPT_DIR%
-if not exist SDL\build_arm64 mkdir SDL\build_arm64
-cd SDL\build_arm64
-
-cmake .. -G Ninja ^
-    -DCMAKE_BUILD_TYPE=Release ^
-    -DSDL_SHARED=ON ^
-    -DSDL_STATIC=ON ^
-    -DCMAKE_INSTALL_PREFIX=%SCRIPT_DIR%\build\windows\arm64\install ^
-    -A ARM64
-
-if %ERRORLEVEL% NEQ 0 (
-    echo Failed to generate ARM64 build files. Exiting.
-    exit /b 1
-)
-
-ninja
-if %ERRORLEVEL% NEQ 0 (
-    echo Failed to build ARM64 version. Exiting.
-    exit /b 1
-)
-
-ninja install
-if %ERRORLEVEL% NEQ 0 (
-    echo Failed to install ARM64 version. Exiting.
-    exit /b 1
-)
-
-:: Copy the DLLs, libs, and headers to build directory
-echo Copying ARM64 files to build directory...
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\arm64\install\bin\*.dll %SCRIPT_DIR%\build\windows\arm64\bin\
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\arm64\install\lib\*.lib %SCRIPT_DIR%\build\windows\arm64\lib\
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\arm64\install\include\* %SCRIPT_DIR%\build\windows\arm64\include\
+echo Copying %BUILD_ARCH% files to build directory...
+xcopy /Y /E /I %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install\bin\*.dll %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\bin\
+xcopy /Y /E /I %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install\lib\*.lib %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\lib\
+xcopy /Y /E /I %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install\include\* %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\include\
 
 :: Return to script directory
 cd %SCRIPT_DIR%
 
 echo.
-echo Windows builds complete! Files are available in:
-echo   - build\windows\x64\bin (DLLs for Windows x64)
-echo   - build\windows\x64\lib (Libraries for Windows x64)
-echo   - build\windows\x64\include (Headers for Windows x64)
-echo   - build\windows\arm64\bin (DLLs for Windows ARM64)
-echo   - build\windows\arm64\lib (Libraries for Windows ARM64)
-echo   - build\windows\arm64\include (Headers for Windows ARM64)
+echo Windows %BUILD_ARCH% build complete! Files are available in:
+echo   - build\windows\%BUILD_ARCH%\bin (DLLs)
+echo   - build\windows\%BUILD_ARCH%\lib (Libraries)
+echo   - build\windows\%BUILD_ARCH%\include (Headers)
