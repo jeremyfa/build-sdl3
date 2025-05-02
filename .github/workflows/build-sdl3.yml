@@ -205,6 +205,17 @@ jobs:
       - name: Install Visual Studio Components
         uses: microsoft/setup-msbuild@v1
 
+      - name: Install Windows SDK Components
+        shell: powershell
+        run: |
+          # This ensures the Windows SDK components needed for GameInput are installed
+          Write-Host "Ensuring Windows SDK components are installed..."
+          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
+          if ($vsPath) {
+              # Ensure Gaming SDK components are installed
+              & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "$vsPath" --add Microsoft.VisualStudio.Component.Windows10SDK.19041 --add Microsoft.VisualStudio.Component.UWP.VC.ARM64 --quiet --norestart --force
+          }
+
       - name: Build SDL3 for Windows (x64) with specific commit
         shell: cmd
         env:

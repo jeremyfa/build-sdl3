@@ -34,15 +34,33 @@ cd %SCRIPT_DIR%
 if not exist SDL\build_%BUILD_ARCH% mkdir SDL\build_%BUILD_ARCH%
 cd SDL\build_%BUILD_ARCH%
 
+:: Check for Windows SDK components
+where /q cl.exe || (
+  echo ERROR: Visual C++ compiler not found in PATH.
+  exit /b 1
+)
+
+:: Try to locate Windows Gaming SDK
+echo Checking for Windows Gaming SDK components...
+if exist "%ProgramFiles(x86)%\Windows Kits\10\Include" (
+  for /f "delims=" %%A in ('dir /b /ad "%ProgramFiles(x86)%\Windows Kits\10\Include" ^| sort /r') do (
+    if exist "%ProgramFiles(x86)%\Windows Kits\10\Include\%%A\um\gameinput.h" (
+      echo Found gameinput.h in Windows SDK version %%A
+      set WINDOWS_SDK_VERSION=%%A
+      goto :sdk_found
+    )
+  )
+)
+echo WARNING: gameinput.h not found in Windows SDK. GameInput support may be limited.
+:sdk_found
+
 if "%BUILD_ARCH%"=="arm64" (
-    :: For ARM64, we need to use a different generator and specify the architecture
     cmake .. -G "Visual Studio 17 2022" -A ARM64 ^
         -DCMAKE_BUILD_TYPE=Release ^
         -DSDL_SHARED=ON ^
         -DSDL_STATIC=ON ^
         -DCMAKE_INSTALL_PREFIX=%SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install
 ) else (
-    :: For x64, we can use Ninja as before
     cmake .. -G Ninja ^
         -DCMAKE_BUILD_TYPE=Release ^
         -DSDL_SHARED=ON ^
@@ -56,10 +74,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 if "%BUILD_ARCH%"=="arm64" (
-    :: For ARM64, use cmake --build instead of ninja
-    cmake --build . --config Release
+    cmake --build . --config Release --verbose
 ) else (
-    :: For x64, use ninja as before
     ninja
 )
 
@@ -69,10 +85,8 @@ if %ERRORLEVEL% NEQ 0 (
 )
 
 if "%BUILD_ARCH%"=="arm64" (
-    :: For ARM64, use cmake --install instead of ninja install
     cmake --install . --config Release
 ) else (
-    :: For x64, use ninja install as before
     ninja install
 )
 
