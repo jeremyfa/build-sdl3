@@ -193,83 +193,47 @@ jobs:
     # Only run if release doesn't exist
     if: needs.get-sdl3-commit.outputs.release_exists == 'false'
     runs-on: windows-2022
+    strategy:
+      matrix:
+        arch: [x64, arm64]
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.11'
-
-      - name: Install Visual Studio Components
-        uses: microsoft/setup-msbuild@v1
-
-      - name: Install Windows SDK Components
-        shell: powershell
+      - name: Install Visual Studio Components for ARM64
+        if: matrix.arch == 'arm64'
         run: |
-          # This ensures the Windows SDK components needed for GameInput are installed
-          Write-Host "Ensuring Windows SDK components are installed..."
-          $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -property installationPath
-          if ($vsPath) {
-              # Ensure Gaming SDK components are installed
-              & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "$vsPath" --add Microsoft.VisualStudio.Component.Windows10SDK.19041 --add Microsoft.VisualStudio.Component.UWP.VC.ARM64 --quiet --norestart --force
-          }
+          & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "${env:ProgramFiles}\Microsoft Visual Studio\2022\Enterprise" --quiet --add Microsoft.VisualStudio.Component.VC.Tools.ARM64 --add Microsoft.VisualStudio.Component.VC.ATL.ARM64
 
-      - name: Build SDL3 for Windows (x64) with specific commit
-        shell: cmd
+      - name: Set up CMake
+        uses: lukka/get-cmake@latest
+
+      - name: Build SDL3 for Windows ${{ matrix.arch }} with specific commit
         env:
           SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
-          BUILD_ARCH: x64
         run: |
-          echo Building SDL3 for Windows x64 with commit: %SDL3_COMMIT%
-          call build-sdl3-windows.bat
-          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
-
-      - name: Build SDL3 for Windows (ARM64) with specific commit
-        shell: cmd
-        env:
-          SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
-          BUILD_ARCH: arm64
-        run: |
-          echo Building SDL3 for Windows ARM64 with commit: %SDL3_COMMIT%
-          call build-sdl3-windows.bat
-          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+          echo "Building SDL3 for Windows ${{ matrix.arch }} with commit: $env:SDL3_COMMIT"
+          .\build-sdl3-windows.bat ${{ matrix.arch }}
 
       - name: Check Build Output
-        shell: cmd
         run: |
-          dir build\windows\x64\bin
-          dir build\windows\x64\lib
-          dir build\windows\x64\include
-          dir build\windows\arm64\bin
-          dir build\windows\arm64\lib
-          dir build\windows\arm64\include
+          Get-ChildItem -Path build/windows/${{ matrix.arch }}/bin
+          Get-ChildItem -Path build/windows/${{ matrix.arch }}/lib
+          Get-ChildItem -Path build/windows/${{ matrix.arch }}/include -Recurse | Measure-Object | Select-Object -ExpandProperty Count
 
-      - name: Create Windows Archives
-        shell: powershell
+      - name: Create Windows Archive
         run: |
-          # Create commit.txt files with the SDL3 commit hash
-          Set-Content -Path "build\windows\x64\commit.txt" -Value "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}"
-          Set-Content -Path "build\windows\arm64\commit.txt" -Value "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}"
+          # Create commit.txt file with the SDL3 commit hash
+          Set-Content -Path build/windows/${{ matrix.arch }}/commit.txt -Value "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}"
 
-          # Create zip archives
-          cd build\windows
-          Compress-Archive -Path x64\* -DestinationPath sdl3-windows-x64.zip
-          Compress-Archive -Path arm64\* -DestinationPath sdl3-windows-arm64.zip
+          # Create zip with contents directly at root
+          Compress-Archive -Path build/windows/${{ matrix.arch }}/* -DestinationPath build/windows/sdl3-windows-${{ matrix.arch }}.zip -Force
 
-      - name: Upload Windows x64 Archive
+      - name: Upload Windows Archive
         uses: actions/upload-artifact@v4
         with:
-          name: sdl3-windows-x64
-          path: build/windows/sdl3-windows-x64.zip
-          retention-days: 7
-
-      - name: Upload Windows ARM64 Archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdl3-windows-arm64
-          path: build/windows/sdl3-windows-arm64.zip
+          name: sdl3-windows-${{ matrix.arch }}
+          path: build/windows/sdl3-windows-${{ matrix.arch }}.zip
           retention-days: 7
 
   build-android:

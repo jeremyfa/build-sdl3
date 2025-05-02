@@ -7,105 +7,108 @@ cd %SCRIPT_DIR%
 
 :: Setup SDL3 if needed
 if not exist SDL (
-    echo SDL3 not found. Running setup script...
     call setup-sdl3-windows.bat
-    if %ERRORLEVEL% NEQ 0 (
-        echo Setup failed. Exiting.
-        exit /b 1
+    if !ERRORLEVEL! NEQ 0 (
+        echo Error setting up SDL3
+        exit /b !ERRORLEVEL!
     )
 )
 
-:: Determine which architecture to build
-if "%BUILD_ARCH%"=="" (
-    echo BUILD_ARCH environment variable not set. Building for x64 by default.
-    set BUILD_ARCH=x64
+:: Determine host architecture
+if "%PROCESSOR_ARCHITECTURE%" equ "AMD64" (
+  set HOST_ARCH=x64
+) else if "%PROCESSOR_ARCHITECTURE%" equ "ARM64" (
+  set HOST_ARCH=arm64
+) else (
+  set HOST_ARCH=x86
 )
 
-echo Building for architecture: %BUILD_ARCH%
-
-:: Create output directories for the specified architecture
-if not exist build\windows\%BUILD_ARCH%\bin mkdir build\windows\%BUILD_ARCH%\bin
-if not exist build\windows\%BUILD_ARCH%\lib mkdir build\windows\%BUILD_ARCH%\lib
-if not exist build\windows\%BUILD_ARCH%\include mkdir build\windows\%BUILD_ARCH%\include
-
-:: Build for Windows with the specified architecture
-echo Building SDL3 for Windows %BUILD_ARCH%...
-cd %SCRIPT_DIR%
-if not exist SDL\build_%BUILD_ARCH% mkdir SDL\build_%BUILD_ARCH%
-cd SDL\build_%BUILD_ARCH%
-
-:: Check for Windows SDK components
-where /q cl.exe || (
-  echo ERROR: Visual C++ compiler not found in PATH.
+:: Determine target architecture
+if "%1" equ "x64" (
+  set TARGET_ARCH=x64
+) else if "%1" equ "arm64" (
+  set TARGET_ARCH=arm64
+) else if "%1" neq "" (
+  echo Unknown target "%1" architecture!
   exit /b 1
-)
-
-:: Try to locate Windows Gaming SDK
-echo Checking for Windows Gaming SDK components...
-if exist "%ProgramFiles(x86)%\Windows Kits\10\Include" (
-  for /f "delims=" %%A in ('dir /b /ad "%ProgramFiles(x86)%\Windows Kits\10\Include" ^| sort /r') do (
-    if exist "%ProgramFiles(x86)%\Windows Kits\10\Include\%%A\um\gameinput.h" (
-      echo Found gameinput.h in Windows SDK version %%A
-      set WINDOWS_SDK_VERSION=%%A
-      goto :sdk_found
-    )
-  )
-)
-echo WARNING: gameinput.h not found in Windows SDK. GameInput support may be limited.
-:sdk_found
-
-if "%BUILD_ARCH%"=="arm64" (
-    cmake .. -G "Visual Studio 17 2022" -A ARM64 ^
-        -DCMAKE_BUILD_TYPE=Release ^
-        -DSDL_SHARED=ON ^
-        -DSDL_STATIC=ON ^
-        -DCMAKE_INSTALL_PREFIX=%SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install
 ) else (
-    cmake .. -G Ninja ^
-        -DCMAKE_BUILD_TYPE=Release ^
-        -DSDL_SHARED=ON ^
-        -DSDL_STATIC=ON ^
-        -DCMAKE_INSTALL_PREFIX=%SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install
+  set TARGET_ARCH=%HOST_ARCH%
 )
 
-if %ERRORLEVEL% NEQ 0 (
-    echo Failed to generate %BUILD_ARCH% build files. Exiting.
+echo Building SDL3 for Windows %TARGET_ARCH%...
+
+:: Check for required tools
+where cmake >nul 2>&1 || (
+    echo CMake is required but not found in PATH.
+    echo Please install CMake and add it to your PATH.
     exit /b 1
 )
 
-if "%BUILD_ARCH%"=="arm64" (
-    cmake --build . --config Release --verbose
-) else (
-    ninja
-)
+:: Create output directories
+mkdir build\windows\%TARGET_ARCH%\bin 2>nul
+mkdir build\windows\%TARGET_ARCH%\lib 2>nul
+mkdir build\windows\%TARGET_ARCH%\include 2>nul
 
-if %ERRORLEVEL% NEQ 0 (
-    echo Failed to build %BUILD_ARCH% version. Exiting.
-    exit /b 1
-)
+:: Create build directory
+set BUILD_DIR=SDL\build_windows_%TARGET_ARCH%
+mkdir %BUILD_DIR% 2>nul
+cd %BUILD_DIR%
 
-if "%BUILD_ARCH%"=="arm64" (
-    cmake --install . --config Release
-) else (
-    ninja install
-)
+:: Set up architecture-specific variables
+set GENERATOR=Visual Studio 17 2022
+set CMAKE_ARGS=-G "%GENERATOR%" -A %TARGET_ARCH% -DVCPKG_TARGET_TRIPLET=%TARGET_ARCH%-windows
 
-if %ERRORLEVEL% NEQ 0 (
-    echo Failed to install %BUILD_ARCH% version. Exiting.
-    exit /b 1
-)
+:: Run CMake to configure the build
+echo Running CMake...
+cmake .. %CMAKE_ARGS% ^
+    -DCMAKE_BUILD_TYPE=Release ^
+    -DSDL_SHARED=ON ^
+    -DSDL_STATIC=ON ^
+    -DSDL_TEST=OFF
 
-:: Copy the DLLs, libs, and headers to build directory
-echo Copying %BUILD_ARCH% files to build directory...
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install\bin\*.dll %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\bin\
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install\lib\*.lib %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\lib\
-xcopy /Y /E /I %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\install\include\* %SCRIPT_DIR%\build\windows\%BUILD_ARCH%\include\
+:: Build both Debug and Release configurations
+echo Building Debug configuration...
+cmake --build . --config Debug
+echo Building Release configuration...
+cmake --build . --config Release
 
-:: Return to script directory
 cd %SCRIPT_DIR%
 
-echo.
-echo Windows %BUILD_ARCH% build complete! Files are available in:
-echo   - build\windows\%BUILD_ARCH%\bin (DLLs)
-echo   - build\windows\%BUILD_ARCH%\lib (Libraries)
-echo   - build\windows\%BUILD_ARCH%\include (Headers)
+:: Copy binaries and headers to output directory
+echo Copying binaries and headers...
+
+:: Copy DLLs
+copy /Y %BUILD_DIR%\Release\SDL3.dll build\windows\%TARGET_ARCH%\bin\
+copy /Y %BUILD_DIR%\Debug\SDL3d.dll build\windows\%TARGET_ARCH%\bin\
+
+:: Copy import libraries
+copy /Y %BUILD_DIR%\Release\SDL3.lib build\windows\%TARGET_ARCH%\lib\
+copy /Y %BUILD_DIR%\Debug\SDL3d.lib build\windows\%TARGET_ARCH%\lib\
+
+:: Copy static libraries
+copy /Y %BUILD_DIR%\Release\SDL3-static.lib build\windows\%TARGET_ARCH%\lib\
+copy /Y %BUILD_DIR%\Debug\SDL3-staticd.lib build\windows\%TARGET_ARCH%\lib\
+
+:: Copy headers
+xcopy /Y /S /I SDL\include\* build\windows\%TARGET_ARCH%\include\
+
+:: Create a build info file
+echo SDL3 for Windows %TARGET_ARCH% > build\windows\%TARGET_ARCH%\build_info.txt
+echo Configuration: Debug and Release >> build\windows\%TARGET_ARCH%\build_info.txt
+echo Shared Library: Yes >> build\windows\%TARGET_ARCH%\build_info.txt
+echo Static Library: Yes >> build\windows\%TARGET_ARCH%\build_info.txt
+
+:: Get the current SDL3 commit hash
+cd SDL
+for /f "tokens=*" %%a in ('git rev-parse HEAD') do set CURRENT_SDL3_COMMIT=%%a
+echo SDL3 Commit: %CURRENT_SDL3_COMMIT% >> ..\build\windows\%TARGET_ARCH%\build_info.txt
+cd ..
+
+echo Windows %TARGET_ARCH% build complete! Libraries and binaries are available in:
+echo   - build\windows\%TARGET_ARCH%\bin\SDL3.dll (shared library)
+echo   - build\windows\%TARGET_ARCH%\bin\SDL3d.dll (debug shared library)
+echo   - build\windows\%TARGET_ARCH%\lib\SDL3.lib (import library)
+echo   - build\windows\%TARGET_ARCH%\lib\SDL3d.lib (debug import library)
+echo   - build\windows\%TARGET_ARCH%\lib\SDL3-static.lib (static library)
+echo   - build\windows\%TARGET_ARCH%\lib\SDL3-staticd.lib (debug static library)
+echo   - build\windows\%TARGET_ARCH%\include\ (headers)

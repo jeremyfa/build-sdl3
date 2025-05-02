@@ -39,7 +39,7 @@ for ARCH in "${ARCHS[@]}"; do
         -DCMAKE_BUILD_TYPE=Release \
         -DANDROID_ABI="$ARCH" \
         -DANDROID_PLATFORM=android-$API_LEVEL \
-        -DANDROID_STL=c++_shared \
+        -DANDROID_STL=c++_static \
         -DSDL_SHARED=OFF \
         -DSDL_STATIC=ON \
         -DSDL_TEST=OFF
@@ -75,6 +75,7 @@ SDL3 for Android
 NDK Version: $NDK_VERSION
 API Level: $API_LEVEL
 Architectures: ${ARCHS[@]}
+STL: c++_static (statically linked)
 EOF
 
 echo "Android build complete! Libraries are available in:"
