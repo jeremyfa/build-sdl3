@@ -1,0 +1,388 @@
+name: Build SDL3
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'  # Run every day at midnight UTC
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-sdl3.yml'
+      - 'build-sdl3-*.sh'
+      - 'build-sdl3-*.bat'
+      - 'setup-sdl3-*.sh'
+      - 'setup-sdl3-*.bat'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/build-sdl3.yml'
+      - 'build-sdl3-*.sh'
+      - 'build-sdl3-*.bat'
+      - 'setup-sdl3-*.sh'
+      - 'setup-sdl3-*.bat'
+
+# Add permissions at the workflow level
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  get-sdl3-commit:
+    name: Determine SDL3 Commit Hash and Check Existing Release
+    runs-on: ubuntu-latest
+    outputs:
+      sdl3_commit: ${{ steps.get-commit.outputs.sdl3_commit }}
+      sdl3_commit_short: ${{ steps.get-commit.outputs.sdl3_commit_short }}
+      release_exists: ${{ steps.check-release.outputs.release_exists }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Git
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git
+
+      - name: Get Latest SDL3 Commit
+        id: get-commit
+        run: |
+          # Clone just enough of the SDL3 repo to get the latest commit
+          git clone --depth 1 https://github.com/libsdl-org/SDL.git temp-sdl
+          cd temp-sdl
+          SDL3_COMMIT=$(git rev-parse HEAD)
+          SDL3_COMMIT_SHORT=$(git rev-parse --short HEAD)
+          echo "sdl3_commit=$SDL3_COMMIT" >> $GITHUB_OUTPUT
+          echo "sdl3_commit_short=$SDL3_COMMIT_SHORT" >> $GITHUB_OUTPUT
+          echo "SDL3 commit hash: $SDL3_COMMIT"
+          echo "SDL3 short commit hash: $SDL3_COMMIT_SHORT"
+          cd ..
+          rm -rf temp-sdl
+
+      - name: Check if Release Exists
+        id: check-release
+        run: |
+          RELEASE_EXISTS=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases/tags/sdl3-${{ steps.get-commit.outputs.sdl3_commit }}" | \
+            jq -r '.id')
+
+          if [[ "$RELEASE_EXISTS" == "null" || "$RELEASE_EXISTS" == "" ]]; then
+            echo "Release does not exist"
+            echo "release_exists=false" >> $GITHUB_OUTPUT
+          else
+            echo "Release already exists with ID: $RELEASE_EXISTS"
+            echo "release_exists=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-mac:
+    name: Build SDL3 for macOS
+    needs: [get-sdl3-commit]
+    # Only run if release doesn't exist
+    if: needs.get-sdl3-commit.outputs.release_exists == 'false'
+    runs-on: macos-14
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install --upgrade certifi
+
+      - name: Make Scripts Executable
+        run: |
+          chmod +x setup-sdl3-mac.sh
+          chmod +x build-sdl3-mac.sh
+
+      - name: Build SDL3 for macOS with specific commit
+        env:
+          SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
+        run: |
+          echo "Building SDL3 for macOS with commit: $SDL3_COMMIT"
+          ./build-sdl3-mac.sh
+
+      - name: Check Build Output
+        run: |
+          ls -la build/mac/universal/lib/
+          otool -L build/mac/universal/lib/libSDL3.dylib || true
+          ls -la build/mac/universal/include/
+
+      - name: Create macOS Archive
+        run: |
+          # Create commit.txt file with the SDL3 commit hash
+          echo "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" > build/mac/universal/commit.txt
+
+          # Create zip with contents directly at root
+          cd build/mac/universal
+          zip -r ../sdl3-mac-universal.zip *
+          cd ../../..
+
+      - name: Upload macOS Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-mac-universal
+          path: build/mac/sdl3-mac-universal.zip
+          retention-days: 7
+
+  build-ios:
+    name: Build SDL3 for iOS
+    needs: [get-sdl3-commit]
+    # Only run if release doesn't exist
+    if: needs.get-sdl3-commit.outputs.release_exists == 'false'
+    runs-on: macos-14
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install --upgrade certifi
+
+      - name: Make Scripts Executable
+        run: |
+          chmod +x setup-sdl3-mac.sh
+          chmod +x build-sdl3-ios.sh
+
+      - name: Build SDL3 for iOS with specific commit
+        env:
+          SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
+        run: |
+          echo "Building SDL3 for iOS with commit: $SDL3_COMMIT"
+          ./build-sdl3-ios.sh
+
+      - name: Check Build Output
+        run: |
+          ls -la build/ios/universal/
+          find build/ios/universal -name "Headers" | xargs ls -la || true
+
+      - name: Create iOS Archive
+        run: |
+          # Create commit.txt file with the SDL3 commit hash
+          echo "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" > build/ios/universal/commit.txt
+
+          # Create zip with contents directly at root
+          cd build/ios/universal
+          zip -r ../sdl3-ios-universal.zip *
+          cd ../../..
+
+      - name: Upload iOS Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-ios-universal
+          path: build/ios/sdl3-ios-universal.zip
+          retention-days: 7
+
+  build-windows:
+    name: Build SDL3 for Windows
+    needs: [get-sdl3-commit]
+    # Only run if release doesn't exist
+    if: needs.get-sdl3-commit.outputs.release_exists == 'false'
+    runs-on: windows-2022
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Visual Studio Components
+        uses: microsoft/setup-msbuild@v1
+
+      - name: Build SDL3 for Windows (x64 and ARM64) with specific commit
+        shell: cmd
+        env:
+          SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
+        run: |
+          echo Building SDL3 for Windows with commit: %SDL3_COMMIT%
+          call build-sdl3-windows.bat
+          if %ERRORLEVEL% NEQ 0 exit /b %ERRORLEVEL%
+
+      - name: Check Build Output
+        shell: cmd
+        run: |
+          dir build\windows\x64\bin
+          dir build\windows\x64\lib
+          dir build\windows\x64\include
+          dir build\windows\arm64\bin
+          dir build\windows\arm64\lib
+          dir build\windows\arm64\include
+
+      - name: Create Windows Archives
+        shell: powershell
+        run: |
+          # Create commit.txt files with the SDL3 commit hash
+          Set-Content -Path "build\windows\x64\commit.txt" -Value "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}"
+          Set-Content -Path "build\windows\arm64\commit.txt" -Value "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}"
+
+          # Create zip archives
+          cd build\windows
+          Compress-Archive -Path x64\* -DestinationPath sdl3-windows-x64.zip
+          Compress-Archive -Path arm64\* -DestinationPath sdl3-windows-arm64.zip
+
+      - name: Upload Windows x64 Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-windows-x64
+          path: build/windows/sdl3-windows-x64.zip
+          retention-days: 7
+
+      - name: Upload Windows ARM64 Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-windows-arm64
+          path: build/windows/sdl3-windows-arm64.zip
+          retention-days: 7
+
+  build-android:
+    name: Build SDL3 for Android
+    needs: [get-sdl3-commit]
+    # Only run if release doesn't exist
+    if: needs.get-sdl3-commit.outputs.release_exists == 'false'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ndk-version: ['r21e', 'r22b', 'r23c', 'r24', 'r25c', 'r26d', 'r27c', 'r28b']
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Set up Java
+        uses: actions/setup-java@v2
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+
+      - name: Install Android NDK
+        run: |
+          echo "Installing Android NDK ${{ matrix.ndk-version }}..."
+          echo "y" | sdkmanager "ndk;${{ matrix.ndk-version }}"
+          echo "ANDROID_NDK_HOME=$ANDROID_SDK_ROOT/ndk/${{ matrix.ndk-version }}" >> $GITHUB_ENV
+
+      - name: Make Scripts Executable
+        run: |
+          chmod +x setup-sdl3-android.sh
+          chmod +x build-sdl3-android.sh
+
+      - name: Build SDL3 for Android with specific commit
+        env:
+          SDL3_COMMIT: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}
+          ANDROID_API_LEVEL: 21 # Minimum API level
+        run: |
+          echo "Building SDL3 for Android with commit: $SDL3_COMMIT and NDK ${{ matrix.ndk-version }}"
+          ./build-sdl3-android.sh
+
+      - name: Check Build Output
+        run: |
+          ls -la build/android/${{ matrix.ndk-version }}/
+          ls -la build/android/${{ matrix.ndk-version }}/lib/*/
+          ls -la build/android/${{ matrix.ndk-version }}/include/*/
+
+      - name: Create Android Archive
+        run: |
+          # Create commit.txt file with the SDL3 commit hash
+          echo "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" > build/android/${{ matrix.ndk-version }}/commit.txt
+
+          # Create zip with contents directly at root
+          cd build/android
+          zip -r ../sdl3-android-${{ matrix.ndk-version }}.zip ${{ matrix.ndk-version }}
+          cd ../..
+
+      - name: Upload Android Archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdl3-android-${{ matrix.ndk-version }}
+          path: build/sdl3-android-${{ matrix.ndk-version }}.zip
+          retention-days: 7
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [get-sdl3-commit, build-mac, build-ios, build-windows, build-android]
+    runs-on: ubuntu-latest
+    # Run on schedule, manual triggers, or push to main (but not PRs)
+    # And only if the release doesn't already exist
+    if: (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) && needs.get-sdl3-commit.outputs.release_exists == 'false'
+    # Add permissions specifically for this job
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare Release Assets
+        run: |
+          mkdir -p release-assets
+          # Find and copy the artifacts (handle potential nested directories)
+          find artifacts/sdl3-mac-universal -name "*.zip" -exec cp {} release-assets/sdl3-mac-universal.zip \;
+          find artifacts/sdl3-ios-universal -name "*.zip" -exec cp {} release-assets/sdl3-ios-universal.zip \;
+          find artifacts/sdl3-windows-x64 -name "*.zip" -exec cp {} release-assets/sdl3-windows-x64.zip \;
+          find artifacts/sdl3-windows-arm64 -name "*.zip" -exec cp {} release-assets/sdl3-windows-arm64.zip \;
+          # Copy Android artifacts for all NDK versions
+          for NDK_DIR in artifacts/sdl3-android-*/; do
+            NDK_VERSION=$(basename "$NDK_DIR" | sed 's/sdl3-android-//')
+            find "$NDK_DIR" -name "*.zip" -exec cp {} "release-assets/sdl3-android-${NDK_VERSION}.zip" \;
+          done
+          echo "Prepared release assets:"
+          ls -la release-assets/
+
+      - name: Get Current Date
+        id: date
+        run: echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Install GitHub CLI
+        run: |
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+          sudo apt update
+          sudo apt install gh
+
+      - name: Create Release
+        id: create-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the files to upload
+          RELEASE_FILES=$(find release-assets -name "*.zip" | tr '\n' ' ')
+
+          # Create release with GitHub CLI
+          gh release create "sdl3-${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" \
+            --title "SDL3 ${{ steps.date.outputs.date }} (${{ needs.get-sdl3-commit.outputs.sdl3_commit_short }})" \
+            --notes "Automated build of SDL3 from commit [${{ needs.get-sdl3-commit.outputs.sdl3_commit }}](https://github.com/libsdl-org/SDL/commit/${{ needs.get-sdl3-commit.outputs.sdl3_commit }})
+
+            Built on ${{ steps.date.outputs.date }}
+
+            This release provides prebuilt binaries for:
+            - macOS (Universal)
+            - iOS (ARM64 device + ARM64/x86_64 simulator)
+            - Windows (x64 and ARM64)
+            - Android (multiple NDK versions, all architectures as static library)" \
+            $RELEASE_FILES
