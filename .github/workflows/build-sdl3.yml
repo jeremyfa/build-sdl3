@@ -240,8 +240,6 @@ jobs:
         if: always()
         shell: powershell
         run: |
-          Write-Host "===== DEBUGGING BUILD OUTPUTS ====="
-
           # Check SDK directory
           if (Test-Path "C:\Program Files (x86)\Windows Kits") {
             Write-Host "Windows SDK directories:"
@@ -273,8 +271,6 @@ jobs:
       - name: Create Windows Archive
         if: always()
         run: |
-          Write-Host "===== CREATING WINDOWS ARCHIVE ====="
-
           # Create commit.txt file with the SDL3 commit hash
           if (!(Test-Path -Path build/windows/${{ matrix.arch }})) {
             Write-Host "Creating output directory structure"
