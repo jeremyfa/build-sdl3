@@ -485,6 +485,11 @@ jobs:
       - name: Prepare Release Assets
         run: |
           mkdir -p release-assets
+
+          # Create a standalone commit.txt file
+          echo "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" > release-assets/commit.txt
+          echo "Created standalone commit.txt with commit hash: ${{ needs.get-sdl3-commit.outputs.sdl3_commit }}"
+
           # Find and copy the artifacts (handle potential nested directories)
           find artifacts/sdl3-mac-universal -name "*.zip" -exec cp {} release-assets/sdl3-mac-universal.zip \;
           find artifacts/sdl3-ios-universal -name "*.zip" -exec cp {} release-assets/sdl3-ios-universal.zip \;
@@ -525,7 +530,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Get the files to upload
-          RELEASE_FILES=$(find release-assets -name "*.zip" -o -name "*.tar.gz" | tr '\n' ' ')
+          RELEASE_FILES=$(find release-assets -name "*.zip" -o -name "*.tar.gz" -o -name "commit.txt" | tr '\n' ' ')
 
           # Create release with GitHub CLI
           gh release create "sdl3-${{ needs.get-sdl3-commit.outputs.sdl3_commit_short }}" \
