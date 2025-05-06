@@ -22,18 +22,20 @@ NDK_VERSION=$(basename "$ANDROID_NDK_HOME")
 echo "Using Android NDK version: $NDK_VERSION"
 
 # Create output directories
-mkdir -p "build/android/$NDK_VERSION"
+mkdir -p "build/android/lib"
+mkdir -p "build/android/jniLibs"
+mkdir -p "build/android/include"
 
 # Build for each architecture
 for ARCH in "${ARCHS[@]}"; do
     echo "Building SDL3 for Android $ARCH..."
 
-    # Create build directory
-    BUILD_DIR="SDL/build_android_$ARCH"
-    mkdir -p "$BUILD_DIR"
-    cd "$BUILD_DIR"
+    # Create build directory for static library
+    STATIC_BUILD_DIR="SDL/build_android_static_$ARCH"
+    mkdir -p "$STATIC_BUILD_DIR"
+    cd "$STATIC_BUILD_DIR"
 
-    # Run CMake to configure the build
+    # Run CMake to configure the build for static library
     cmake .. -G Ninja \
         -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
         -DCMAKE_BUILD_TYPE=Release \
@@ -44,11 +46,11 @@ for ARCH in "${ARCHS[@]}"; do
         -DSDL_STATIC=ON \
         -DSDL_TEST=OFF
 
-    # Build
+    # Build static library
     ninja
 
     # Create output directory for this architecture
-    OUTPUT_DIR="$SCRIPT_DIR/build/android/$NDK_VERSION/lib/$ARCH"
+    OUTPUT_DIR="$SCRIPT_DIR/build/android/lib/$ARCH"
     mkdir -p "$OUTPUT_DIR"
 
     # Copy static library
@@ -63,24 +65,64 @@ for ARCH in "${ARCHS[@]}"; do
     fi
 
     cd "$SCRIPT_DIR"
+
+    # Now build shared library
+    SHARED_BUILD_DIR="SDL/build_android_shared_$ARCH"
+    mkdir -p "$SHARED_BUILD_DIR"
+    cd "$SHARED_BUILD_DIR"
+
+    # Run CMake to configure the build for shared library
+    cmake .. -G Ninja \
+        -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DANDROID_ABI="$ARCH" \
+        -DANDROID_PLATFORM=android-$API_LEVEL \
+        -DANDROID_STL=c++_static \
+        -DSDL_SHARED=ON \
+        -DSDL_STATIC=OFF \
+        -DSDL_TEST=OFF
+
+    # Build shared library
+    ninja
+
+    # Create jniLibs directory for this architecture
+    JNILIBS_DIR="$SCRIPT_DIR/build/android/jniLibs/$ARCH"
+    mkdir -p "$JNILIBS_DIR"
+
+    # Copy shared library
+    if [ -f libSDL3.so ]; then
+        cp libSDL3.so "$JNILIBS_DIR"
+    elif [ -f lib/libSDL3.so ]; then
+        cp lib/libSDL3.so "$JNILIBS_DIR"
+    else
+        echo "Error: libSDL3.so not found for architecture $ARCH"
+        find . -name "libSDL3.so" -type f
+        exit 1
+    fi
+
+    cd "$SCRIPT_DIR"
 done
 
-# Create a combined include directory at the root
-mkdir -p "build/android/$NDK_VERSION/include"
-cp -R SDL/include/* "build/android/$NDK_VERSION/include/"
+# Copy include directory
+cp -R SDL/include/* "build/android/include/"
 
 # Create a reference file with build information
-cat > "build/android/$NDK_VERSION/build_info.txt" << EOF
+cat > "build/android/build_info.txt" << EOF
 SDL3 for Android
 NDK Version: $NDK_VERSION
 API Level: $API_LEVEL
 Architectures: ${ARCHS[@]}
-STL: c++_static (statically linked)
+Static Library: YES (with c++_static STL)
+Shared Library: YES (with c++_static STL)
 EOF
 
+# Get the current SDL3 commit hash
+cd SDL
+CURRENT_SDL3_COMMIT=$(git rev-parse HEAD)
+echo "SDL3 Commit: $CURRENT_SDL3_COMMIT" >> ../build/android/build_info.txt
+cd ..
+
 echo "Android build complete! Libraries are available in:"
-echo "  - build/android/$NDK_VERSION/"
-for ARCH in "${ARCHS[@]}"; do
-    echo "    - $ARCH/lib/libSDL3.a (static library)"
-done
-echo "  - build/android/$NDK_VERSION/include/ (headers)"
+echo "  - build/android/lib/ (static libraries)"
+echo "  - build/android/jniLibs/ (shared libraries)"
+echo "  - build/android/include/ (headers)"

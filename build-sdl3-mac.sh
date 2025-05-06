@@ -74,6 +74,21 @@ done
 echo "Copying headers..."
 cp -R SDL/include/* build/mac/universal/include/
 
+# Create a build info file
+echo "SDL3 for macOS (Universal)" > build/mac/universal/build_info.txt
+echo "Configuration: Release" >> build/mac/universal/build_info.txt
+echo "Architectures: arm64, x86_64" >> build/mac/universal/build_info.txt
+echo "Format: Universal Binary" >> build/mac/universal/build_info.txt
+echo "Deployment Target: 12.0+" >> build/mac/universal/build_info.txt
+echo "Shared Library: Yes" >> build/mac/universal/build_info.txt
+echo "Static Library: No" >> build/mac/universal/build_info.txt
+
+# Get the current SDL3 commit hash
+cd SDL
+CURRENT_SDL3_COMMIT=$(git rev-parse HEAD)
+echo "SDL3 Commit: $CURRENT_SDL3_COMMIT" >> ../build/mac/universal/build_info.txt
+cd ..
+
 echo "macOS build complete! Libraries are available in:"
 echo "  - build/mac/arm64/ (for Apple Silicon Macs)"
 echo "  - build/mac/x86_64/ (for Intel Macs)"

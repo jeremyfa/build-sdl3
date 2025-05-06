@@ -267,6 +267,19 @@ For iOS-only code, you can also use the framework-style includes:
 Both approaches will work, but the first is recommended for cross-platform consistency.
 EOL
 
+# Create a build info file
+echo "SDL3 for iOS (Universal)" > build/ios/universal/build_info.txt
+echo "Configuration: Release" >> build/ios/universal/build_info.txt
+echo "Architectures: arm64 (device), arm64/x86_64 (simulator)" >> build/ios/universal/build_info.txt
+echo "Format: XCFramework" >> build/ios/universal/build_info.txt
+echo "Deployment Target: 16.0+" >> build/ios/universal/build_info.txt
+
+# Get the current SDL3 commit hash
+cd SDL
+CURRENT_SDL3_COMMIT=$(git rev-parse HEAD)
+echo "SDL3 Commit: $CURRENT_SDL3_COMMIT" >> ../build/ios/universal/build_info.txt
+cd ..
+
 echo "iOS build complete! Frameworks are available in:"
 echo "  - build/ios/arm64/SDL3.framework (for iOS devices)"
 echo "  - build/ios/simulator-arm64/SDL3.framework (for ARM64 simulators)"

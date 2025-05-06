@@ -442,18 +442,18 @@ jobs:
 
       - name: Check Build Output
         run: |
-          ls -la build/android/${{ matrix.ndk-version }}/
-          ls -la build/android/${{ matrix.ndk-version }}/lib/*/
-          ls -la build/android/${{ matrix.ndk-version }}/include/*/
+          ls -la build/android/
+          ls -la build/android/lib/*/
+          ls -la build/android/include/*/
 
       - name: Create Android Archive
         run: |
           # Create commit.txt file with the SDL3 commit hash
-          echo "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" > build/android/${{ matrix.ndk-version }}/commit.txt
+          echo "${{ needs.get-sdl3-commit.outputs.sdl3_commit }}" > build/android/commit.txt
 
           # Create zip with contents directly at root
           cd build/android
-          zip -r ../sdl3-android-${{ matrix.ndk-version }}.zip ${{ matrix.ndk-version }}
+          zip -r ../sdl3-android-${{ matrix.ndk-version }}.zip *
           cd ../..
 
       - name: Upload Android Archive
@@ -493,11 +493,18 @@ jobs:
           # Copy Linux artifacts (.tar.gz files)
           find artifacts/sdl3-linux-x64 -name "*.tar.gz" -exec cp {} release-assets/sdl3-linux-x64.tar.gz \;
           find artifacts/sdl3-linux-arm64 -name "*.tar.gz" -exec cp {} release-assets/sdl3-linux-arm64.tar.gz \;
-          # Copy Android artifacts for all NDK versions
+
+          # Copy Android artifacts with simple rXX format names
           for NDK_DIR in artifacts/sdl3-android-*/; do
             NDK_VERSION=$(basename "$NDK_DIR" | sed 's/sdl3-android-//')
-            find "$NDK_DIR" -name "*.zip" -exec cp {} "release-assets/sdl3-android-${NDK_VERSION}.zip" \;
+
+            # Extract major version number to create rXX format
+            NDK_MAJOR="r$(echo $NDK_VERSION | cut -d'.' -f1)"
+
+            # Copy with the simplified name format
+            find "$NDK_DIR" -name "*.zip" -exec cp {} "release-assets/sdl3-android-${NDK_MAJOR}.zip" \;
           done
+
           echo "Prepared release assets:"
           ls -la release-assets/
 
