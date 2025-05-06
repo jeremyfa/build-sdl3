@@ -388,6 +388,9 @@ else
     echo "All expected files were successfully built and copied."
 fi
 
+# Write commit hash to a separate file
+echo "$CURRENT_SDL3_COMMIT" > ../build/linux/$TARGET_ARCH/commit.txt
+
 # Create Linux Archive with tar to preserve symlinks
 echo "Creating TAR archive..."
 cd build/linux/$TARGET_ARCH
