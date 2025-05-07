@@ -5,6 +5,18 @@ set -e
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR"
 
+# Function to fix install name in frameworks
+fix_framework_install_name() {
+    local framework_path="$1"
+    echo "Fixing install name for: $framework_path"
+
+    # Change the install name from @rpath/libSDL3.0.dylib to @rpath/SDL3.framework/SDL3
+    install_name_tool -id "@rpath/SDL3.framework/SDL3" "$framework_path"
+
+    # Verify the change
+    otool -D "$framework_path"
+}
+
 # Check for iOS toolchain file
 if [ ! -f "ios.toolchain.cmake" ]; then
     echo "iOS toolchain file not found. Downloading from github..."
@@ -54,15 +66,19 @@ if [ -f libSDL3.dylib ] || [ -f libSDL3.0.dylib ]; then
     # Copy the main library file
     if [ -f libSDL3.0.dylib ]; then
         cp libSDL3.0.dylib "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
     else
         cp libSDL3.dylib "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
     fi
 elif [ -f lib/libSDL3.dylib ] || [ -f lib/libSDL3.0.dylib ]; then
     # Copy from lib/ directory
     if [ -f lib/libSDL3.0.dylib ]; then
         cp lib/libSDL3.0.dylib "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
     else
         cp lib/libSDL3.dylib "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/arm64/SDL3.framework/SDL3"
     fi
 else
     echo "Error: SDL3 dynamic library not found in expected locations"
@@ -131,15 +147,19 @@ if [ -f libSDL3.dylib ] || [ -f libSDL3.0.dylib ]; then
     # Copy the main library file
     if [ -f libSDL3.0.dylib ]; then
         cp libSDL3.0.dylib "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
     else
         cp libSDL3.dylib "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
     fi
 elif [ -f lib/libSDL3.dylib ] || [ -f lib/libSDL3.0.dylib ]; then
     # Copy from lib/ directory
     if [ -f lib/libSDL3.0.dylib ]; then
         cp lib/libSDL3.0.dylib "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
     else
         cp lib/libSDL3.dylib "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3"
     fi
 else
     echo "Error: SDL3 dynamic library not found in expected locations"
@@ -181,15 +201,19 @@ if [ -f libSDL3.dylib ] || [ -f libSDL3.0.dylib ]; then
     # Copy the main library file
     if [ -f libSDL3.0.dylib ]; then
         cp libSDL3.0.dylib "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
     else
         cp libSDL3.dylib "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
     fi
 elif [ -f lib/libSDL3.dylib ] || [ -f lib/libSDL3.0.dylib ]; then
     # Copy from lib/ directory
     if [ -f lib/libSDL3.0.dylib ]; then
         cp lib/libSDL3.0.dylib "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
     else
         cp lib/libSDL3.dylib "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
+        fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3"
     fi
 else
     echo "Error: SDL3 dynamic library not found in expected locations"
@@ -220,6 +244,9 @@ lipo -create \
     "$SCRIPT_DIR/build/ios/simulator-arm64/SDL3.framework/SDL3" \
     "$SCRIPT_DIR/build/ios/simulator-x86_64/SDL3.framework/SDL3" \
     -output "$SCRIPT_DIR/build/ios/simulator-combined/SDL3.framework/SDL3"
+
+# Fix the install name of the combined framework
+fix_framework_install_name "$SCRIPT_DIR/build/ios/simulator-combined/SDL3.framework/SDL3"
 
 # Create XCFramework
 echo "Creating XCFramework..."
