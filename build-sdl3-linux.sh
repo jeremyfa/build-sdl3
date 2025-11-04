@@ -51,7 +51,7 @@ install_dependencies() {
           libwayland-dev libxkbcommon-dev wayland-protocols \
           libx11-dev libxcursor-dev libxext-dev libxi-dev libxinerama-dev \
           libxrandr-dev libxss-dev libxt-dev libxv-dev libxxf86vm-dev \
-          libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev"
+          libgl1-mesa-dev libgles2-mesa-dev libegl1-mesa-dev libxtst-dev libgles2-mesa-dev"
 
     # Check if we need to install cross-compilation tools
     if [ "$TARGET_ARCH" != "$HOST_ARCH" ]; then
