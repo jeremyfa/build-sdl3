@@ -230,8 +230,22 @@ jobs:
         run: |
           echo Building SDL3 for Windows ${{ matrix.arch }} with commit: %SDL3_COMMIT%
 
-          :: Setup MSVC environment using GitHub Actions native capability (safer than VsDevCmd.bat)
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\Tools\VsDevCmd.bat" -arch=${{ matrix.arch }}
+          :: Locate the installed Visual Studio in a version-independent way via vswhere
+          :: (hardcoding the "2022 Enterprise" path breaks whenever the runner image bumps VS)
+          set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+          for /f "usebackq delims=" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSINSTALL=%%i"
+          if not defined VSINSTALL (
+            echo ERROR: Could not locate a Visual Studio installation with the C++ toolset
+            exit /b 1
+          )
+          echo Found Visual Studio at: %VSINSTALL%
+
+          :: Setup MSVC environment for the target architecture
+          if /I "${{ matrix.arch }}"=="arm64" (
+            call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=arm64 -host_arch=x64
+          ) else (
+            call "%VSINSTALL%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+          )
 
           :: Run the build script
           build-sdl3-windows.bat ${{ matrix.arch }}

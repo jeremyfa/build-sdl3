@@ -70,8 +70,10 @@ if "%TARGET_ARCH%"=="arm64" (
 echo Using CMAKE_ARCH=%CMAKE_ARCH%
 
 :: Run CMake to configure the build
+:: Let CMake auto-detect the installed Visual Studio generator instead of hardcoding
+:: "Visual Studio 17 2022" (which breaks when a newer VS is installed on the runner).
 echo Running CMake...
-cmake .. -G "Visual Studio 17 2022" %CMAKE_ARCH% ^
+cmake .. %CMAKE_ARCH% ^
     -DCMAKE_BUILD_TYPE=Release ^
     -DSDL_SHARED=ON ^
     -DSDL_STATIC=ON ^
